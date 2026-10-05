@@ -114,12 +114,21 @@ tr.best td{background:var(--leaf-soft)}
     <div class="src-head">
       <h2>الملفات المربوطة</h2>
       <div class="src-actions">
-        <button class="btn primary" id="odBtn" type="button">ربط ملفات من وان درايف</button>
+        <button class="btn primary" id="linkBtn" type="button">ربط ملف من Google Sheets</button>
+        <button class="btn" id="odBtn" type="button">ربط من وان درايف</button>
         <label class="btn" for="localFiles">رفع ملفات من الجهاز</label>
         <input id="localFiles" type="file" accept=".xlsx,.xlsm,.xls" multiple hidden>
       </div>
     </div>
     <div class="files" id="fileList"></div>
+    <div id="linkForm" hidden>
+      <div class="row">
+        <input id="sheetUrl" type="text" dir="ltr" placeholder="https://script.google.com/macros/s/.../exec" style="flex:1 1 320px">
+        <button class="btn primary" id="linkAdd" type="button">ربط</button>
+        <button class="btn" id="linkCancel" type="button">إلغاء</button>
+      </div>
+      <p class="note">حط رابط السكريبت (Web app) اللي عملته جوّه ملف Google Sheets. التطبيق بيقرا الملف كله بكل الشيتات ويتحدّث لوحده.</p>
+    </div>
     <div id="odPicker" hidden></div>
     <p class="note warn" id="hostNote" hidden>إنت فاتح النسخة التجريبية. الربط المباشر بوان درايف بيشتغل لما التطبيق يترفع على رابطك الخاص (الخطوات في الشات). لحد كده تقدر ترفع ملفاتك من الجهاز وتشوف كل التحليلات.</p>
     <details class="setup" id="setupBox">
@@ -127,7 +136,7 @@ tr.best td{background:var(--leaf-soft)}
       <div class="setup-grid">
         <label for="clientId">رقم التطبيق (Application client ID)
           <input id="clientId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" dir="ltr"></label>
-        <label for="interval">التحديث التلقائي كل (دقيقة)
+        <label for="interval">التحديث التلقائي كل (دقيقة) — للوان درايف و Google Sheets
           <input id="interval" type="number" min="1" max="60" value="2" dir="ltr"></label>
       </div>
       <p class="note">رابط إعادة التوجيه اللي تكتبه في بورتال مايكروسوفت: <span class="num" id="redirectUri"></span></p>
@@ -445,13 +454,13 @@ function drawExplore(){
 }
 
 function renderFiles(){
-  $('#fileList').innerHTML=files.map(f=>`<span class="file"><span class="tag${f.source==='onedrive'?' od':''}">${{sample:'تجريبي',local:'من الجهاز',onedrive:'وان درايف'}[f.source]}</span><b>${f.name}</b><span class="muted">${f.crops.length?f.crops.length+' محاصيل':(f.wb?f.wb.SheetNames.length+' شيت':'')}</span><button class="x" type="button" aria-label="شيل الملف" data-rm="${f.key}">×</button></span>`).join('')||'<span class="muted">مفيش ملفات مربوطة.</span>';
+  $('#fileList').innerHTML=files.map(f=>`<span class="file"><span class="tag${f.source==='onedrive'||f.source==='link'?' od':''}">${{sample:'تجريبي',local:'من الجهاز',onedrive:'وان درايف',link:'Google Sheets'}[f.source]}</span><b>${f.name}</b><span class="muted">${f.crops.length?f.crops.length+' محاصيل':(f.wb?f.wb.SheetNames.length+' شيت':'')}</span><button class="x" type="button" aria-label="شيل الملف" data-rm="${f.key}">×</button></span>`).join('')||'<span class="muted">مفيش ملفات مربوطة.</span>';
 }
 function renderAll(){
   renderFiles(); renderSales(); renderCrop(); renderTraders(); renderExplore(true);
   $('#lastUpd').textContent=new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
-  const od=files.some(f=>f.source==='onedrive');
-  $('#livePill').className='pill '+(od?'live':'idle'); $('#liveTxt').textContent=od?'متصل بوان درايف — تحديث تلقائي':(files.some(f=>f.source==='local')?'ملفات من الجهاز':(SAMPLE.length?'بيانات تجريبية من ملف المبيعات':'مش متصل'));
+  const od=files.some(f=>f.source==='onedrive'), lk=files.some(f=>f.source==='link');
+  $('#livePill').className='pill '+(od||lk?'live':'idle'); $('#liveTxt').textContent=lk?'متصل بـ Google Sheets — تحديث تلقائي':od?'متصل بوان درايف — تحديث تلقائي':(files.some(f=>f.source==='local')?'ملفات من الجهاز':(SAMPLE.length?'بيانات تجريبية من ملف المبيعات':'مش متصل'));
 }
 
 /* ---------- tabs ---------- */
@@ -465,7 +474,7 @@ $('#minKg').addEventListener('change',renderTraders);
 $('#exFile').addEventListener('change',()=>renderExplore(false));
 $('#exSheet').addEventListener('change',()=>renderExplore(false));
 ['#exLabel','#exValue','#exType'].forEach(s=>$(s).addEventListener('change',drawExplore));
-$('#fileList').addEventListener('click',e=>{const k=e.target.dataset.rm; if(!k) return; files=files.filter(f=>f.key!==k); saveOdSelection(); if(!files.length) loadSample(); renderAll();});
+$('#fileList').addEventListener('click',e=>{const k=e.target.dataset.rm; if(!k) return; files=files.filter(f=>f.key!==k); saveOdSelection(); saveLinks(); if(!files.length) loadSample(); renderAll();});
 
 /* ---------- local files ---------- */
 $('#localFiles').addEventListener('change',async e=>{
@@ -477,6 +486,55 @@ $('#localFiles').addEventListener('change',async e=>{
     files.push({key:'local:'+file.name,name:file.name,source:'local',wb,crops,modified:file.lastModified});
   }
   e.target.value=''; renderAll(); toast('اتقرا '+list.length+' ملف');
+});
+
+/* ---------- Google Sheets published link ---------- */
+function normalizeSheetUrl(u){
+  u=u.trim();
+  if(/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec/.test(u)) return u.split('?')[0];
+  if(!/^https:\/\/docs\.google\.com\/spreadsheets\/d\/e\//.test(u)) return null;
+  const base=u.split('?')[0].replace(/\/(pubhtml|pub)$/,'');
+  return base+'/pub?output=xlsx';
+}
+function hashBytes(b){ let h=2166136261; for(let i=0;i<b.length;i+=7){ h^=b[i]; h=Math.imul(h,16777619); } return (h>>>0)+':'+b.length; }
+function saveLinks(){ store.set('farm.links',JSON.stringify(files.filter(f=>f.source==='link').map(f=>({url:f.url,name:f.name})))); }
+function readFromScriptJson(j){
+  const wb=XLSX.utils.book_new();
+  (j.sheets||[]).forEach(sh=>{ try{ XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sh.values||[]),String(sh.name).slice(0,31)); }catch(e){} });
+  const crops=[]; wb.SheetNames.forEach(n=>{ const p=parseSalesSheet(wb.Sheets[n]); if(p) crops.push(p); });
+  return {wb,crops};
+}
+async function loadLinkFile(url,name){
+  const isScript=/^https:\/\/script\.google\.com\/macros\//.test(url);
+  const r=await fetch(url+(url.includes('?')?'&':'?')+'t='+Date.now(),{cache:'no-store'});
+  if(isScript){
+    if(!r.ok) throw new Error('الرابط رجّع خطأ '+r.status);
+    const txt=await r.text(); let j; try{ j=JSON.parse(txt); }catch(e){ throw new Error('الرد مش داتا. اتأكد إن النشر "Anyone"'); }
+    const h=hashBytes(new TextEncoder().encode(txt)); const key='link:'+url; const old=files.find(f=>f.key===key);
+    if(old && old.modified===h) return false;
+    const {wb,crops}=readFromScriptJson(j);
+    files=files.filter(f=>f.key!==key && f.source!=='sample');
+    files.push({key,url,name:name||j.name||'ملف Google Sheets',source:'link',wb,crops,modified:h});
+    return true;
+  }
+  if(!r.ok) throw new Error('الرابط رجّع خطأ '+r.status);
+  const bytes=new Uint8Array(await r.arrayBuffer());
+  const h=hashBytes(bytes); const key='link:'+url; const old=files.find(f=>f.key===key);
+  if(old && old.modified===h) return false;
+  const {wb,crops}=readWorkbook(bytes);
+  files=files.filter(f=>f.key!==key && f.source!=='sample');
+  files.push({key,url,name:name||(crops.length?'مبيعات المحاصيل':'ملف Google Sheets'),source:'link',wb,crops,modified:h});
+  return true;
+}
+$('#linkBtn').addEventListener('click',()=>{ $('#linkForm').hidden=false; $('#sheetUrl').focus(); });
+$('#linkCancel').addEventListener('click',()=>{ $('#linkForm').hidden=true; });
+$('#linkAdd').addEventListener('click',async()=>{
+  const url=normalizeSheetUrl($('#sheetUrl').value);
+  if(!url){ toast('حط رابط السكريبت اللي بيبدأ بـ script.google.com/macros/s/'); return; }
+  $('#linkAdd').disabled=true;
+  try{ await loadLinkFile(url); saveLinks(); $('#linkForm').hidden=true; $('#sheetUrl').value=''; renderAll(); startPolling(); toast('اتربط الملف، وهيتحدّث لوحده'); }
+  catch(e){ toast('مقدرتش أقرا الملف: '+e.message+'. اتأكد إنك نشرت "المستند بالكامل".'); }
+  $('#linkAdd').disabled=false;
 });
 
 /* ---------- OneDrive (Microsoft Graph) ---------- */
@@ -544,13 +602,16 @@ $('#odBtn').addEventListener('click',async()=>{
   }catch(e){ toast(e.message==='no-client'?'حط رقم التطبيق في الإعدادات':'حصلت مشكلة في الاتصال بوان درايف: '+e.message); }
 });
 async function refreshOd(manual){
-  const ods=files.filter(f=>f.source==='onedrive'); if(!ods.length){ if(manual) toast(files.some(f=>f.source==='local')?'ملفات الجهاز: ارفعها تاني بعد التعديل':'البيانات التجريبية ثابتة'); return; }
+  const lks=files.filter(f=>f.source==='link');
+  if(lks.length){ let ch=false; try{ for(const f of lks){ if(await loadLinkFile(f.url,f.name)) ch=true; } }catch(e){ if(manual) toast('مقدرتش أوصل للملف: '+e.message); }
+    if(ch||manual) renderAll(); if(ch) toast('اتحدّثت البيانات من Google Sheets'); }
+  const ods=files.filter(f=>f.source==='onedrive'); if(!ods.length){ if(lks.length) return; if(manual) toast(files.some(f=>f.source==='local')?'ملفات الجهاز: ارفعها تاني بعد التعديل':'البيانات التجريبية ثابتة'); return; }
   try{ let changed=false; for(const f of ods){ if(await loadOdFile(f.id,f.name)) changed=true; }
     if(changed||manual) renderAll(); if(changed) toast('اتحدّثت البيانات من وان درايف'); }
   catch(e){ if(manual) toast('مقدرتش أوصل لوان درايف: '+e.message); }
 }
 let poll=null;
-function startPolling(){ clearInterval(poll); if(!files.some(f=>f.source==='onedrive')) return; poll=setInterval(()=>refreshOd(false),Math.max(1,+$('#interval').value||2)*60000); }
+function startPolling(){ clearInterval(poll); if(!files.some(f=>f.source==='onedrive'||f.source==='link')) return; poll=setInterval(()=>refreshOd(false),Math.max(1,+$('#interval').value||2)*60000); }
 $('#refreshBtn').addEventListener('click',()=>refreshOd(true));
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshOd(false); });
 
@@ -558,6 +619,7 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshO
 function loadSample(){ if(!SAMPLE.length){ files=[]; return; } files=[{key:'sample',name:'مبيعات المحاصيل 2026',source:'sample',wb:null,crops:SAMPLE,modified:null}]; }
 async function boot(){
   loadSample(); renderAll();
+  try{ const links=JSON.parse(store.get('farm.links')||'[]'); for(const l of links){ try{ await loadLinkFile(l.url,l.name); }catch(e){ console.warn(e); } } if(links.length){ renderAll(); startPolling(); } }catch(e){}
   if(cloudHost && store.get('farm.clientId')){
     try{
       await getMsal();
