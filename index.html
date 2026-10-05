@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>[hidden]{display:none!important}</style>
+<title>لوحة المزرعة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Readex+Pro:wght@500;700&display=swap">
+<style>
+/* Layout: control strip (sources + live status) on top, tabbed analysis below; cards only where a block is a separate object */
+:root{
+  --soil:#2b2118; --bg:#f6f4ee; --surface:#fffdf8; --line:#e4dfd2; --muted:#7a6f60;
+  --leaf:#3f7a3a; --leaf-soft:#e3eedd; --wheat:#c8922e; --clay:#8a5a3c; --sky:#4f7c99;
+  --good:#2f7d32; --warn:#b7791f; --bad:#b4442f;
+  --f-display:"Readex Pro","IBM Plex Sans Arabic",Tahoma,sans-serif;
+  --f-body:"IBM Plex Sans Arabic",Tahoma,"Segoe UI",sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --soil:#ece6da; --bg:#16130f; --surface:#1f1b16; --line:#352f27; --muted:#a69b8a;
+  --leaf:#7fbf6f; --leaf-soft:#25331f; --wheat:#e0ad4f; --clay:#c08a66; --sky:#7fa9c6;
+  --good:#7fbf6f; --warn:#e0ad4f; --bad:#e07a62; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --soil:#ece6da; --bg:#16130f; --surface:#1f1b16; --line:#352f27; --muted:#a69b8a;
+  --leaf:#7fbf6f; --leaf-soft:#25331f; --wheat:#e0ad4f; --clay:#c08a66; --sky:#7fa9c6;
+  --good:#7fbf6f; --warn:#e0ad4f; --bad:#e07a62; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--soil);font-family:var(--f-body);font-size:15px;line-height:1.55;margin:0}
+.wrap{max-width:1180px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:flex;flex-direction:column;gap:20px}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance}
+h1{font-size:1.6rem}
+h2{font-size:1.12rem}
+.muted{color:var(--muted)}
+.num{font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
+header.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
+.status{display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:.88rem}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:var(--leaf-soft);color:var(--leaf);font-weight:600;font-size:.82rem}
+.pill.idle{background:var(--line);color:var(--muted)}
+.pill .dot{width:8px;height:8px;border-radius:50%;background:currentColor}
+.pill.live .dot{animation:pulse 2s infinite}
+@keyframes pulse{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.pill.live .dot{animation:none}}
+button,select,input{font:inherit;color:inherit}
+.btn{border:1px solid var(--line);background:var(--surface);padding:7px 14px;border-radius:8px;cursor:pointer;font-weight:600}
+.btn:hover{border-color:var(--leaf)}
+.btn.primary{background:var(--leaf);border-color:var(--leaf);color:var(--bg)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn:focus-visible,select:focus-visible,input:focus-visible,.tab:focus-visible{outline:2px solid var(--wheat);outline-offset:2px}
+select,input[type=text],input[type=number]{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px;min-width:0}
+.sources{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px}
+.src-head{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.src-actions{display:flex;flex-wrap:wrap;gap:8px}
+.files{display:flex;flex-wrap:wrap;gap:8px}
+.file{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:.86rem;background:var(--bg)}
+.file b{font-weight:600}
+.file .x{border:0;background:none;cursor:pointer;color:var(--muted);font-size:1rem;padding:0 2px}
+.tag{font-size:.72rem;letter-spacing:.02em;padding:1px 7px;border-radius:5px;background:var(--line);color:var(--muted)}
+.tag.od{background:var(--sky);color:var(--bg)}
+details.setup{border-top:1px dashed var(--line);padding-top:10px}
+details.setup summary{cursor:pointer;font-weight:600}
+.setup-grid{display:grid;gap:10px;margin-top:10px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.setup-grid label{display:flex;flex-direction:column;gap:4px;font-size:.85rem}
+.note{font-size:.85rem;color:var(--muted);max-width:75ch}
+.note.warn{color:var(--warn)}
+.picker{border:1px solid var(--line);border-radius:10px;max-height:260px;overflow:auto;padding:6px}
+.picker label{display:flex;gap:8px;align-items:center;padding:6px;border-radius:6px;cursor:pointer;font-size:.88rem}
+.picker label:hover{background:var(--bg)}
+nav.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{border:0;background:none;padding:10px 14px;cursor:pointer;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--soil);border-bottom-color:var(--leaf)}
+.kpis{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(165px,1fr))}
+.kpi{padding:14px 16px;border-inline-start:3px solid var(--line);display:flex;flex-direction:column;gap:2px}
+.kpi.main{border-color:var(--leaf)}
+.kpi .v{font-family:var(--f-display);font-size:1.45rem;font-weight:700}
+.kpi .l{font-size:.8rem;color:var(--muted);letter-spacing:.01em}
+.kpi .s{font-size:.78rem;color:var(--muted)}
+.grid2{display:grid;gap:20px;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr))}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.panel-head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:8px}
+.chart{position:relative;height:320px}
+.chart.tall{height:380px}
+.tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.88rem}
+th,td{padding:8px 10px;text-align:start;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-weight:600;color:var(--muted);font-size:.78rem;letter-spacing:.02em}
+td.n,th.n{text-align:end;font-variant-numeric:tabular-nums}
+tr.best td{background:var(--leaf-soft)}
+.chip{display:inline-block;padding:1px 8px;border-radius:999px;font-size:.75rem;font-weight:600}
+.chip.good{background:var(--leaf-soft);color:var(--good)}
+.chip.warn{color:var(--warn);border:1px solid var(--warn)}
+.chip.bad{color:var(--bad);border:1px solid var(--bad)}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.toast{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));inset-inline-start:16px;background:var(--soil);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:.88rem;max-width:calc(100% - 32px)}
+</style>
+
+</head>
+<body>
+<div class="wrap" dir="rtl">
+  <header class="top">
+    <div>
+      <h1>لوحة المزرعة</h1>
+      <div class="muted" style="font-size:.88rem">بتقرا ملفات الإكسل بتاعتك وبتحوّلها لتحليل وقرارات</div>
+    </div>
+    <div class="status">
+      <span id="livePill" class="pill idle"><span class="dot"></span><span id="liveTxt">بيانات تجريبية</span></span>
+      <span class="muted">آخر تحديث: <span id="lastUpd" class="num">—</span></span>
+      <button class="btn" id="refreshBtn" type="button">تحديث الآن</button>
+    </div>
+  </header>
+
+  <section class="sources" aria-label="مصادر البيانات">
+    <div class="src-head">
+      <h2>الملفات المربوطة</h2>
+      <div class="src-actions">
+        <button class="btn primary" id="odBtn" type="button">ربط ملفات من وان درايف</button>
+        <label class="btn" for="localFiles">رفع ملفات من الجهاز</label>
+        <input id="localFiles" type="file" accept=".xlsx,.xlsm,.xls" multiple hidden>
+      </div>
+    </div>
+    <div class="files" id="fileList"></div>
+    <div id="odPicker" hidden></div>
+    <p class="note warn" id="hostNote" hidden>إنت فاتح النسخة التجريبية. الربط المباشر بوان درايف بيشتغل لما التطبيق يترفع على رابطك الخاص (الخطوات في الشات). لحد كده تقدر ترفع ملفاتك من الجهاز وتشوف كل التحليلات.</p>
+    <details class="setup" id="setupBox">
+      <summary>إعدادات الربط بوان درايف</summary>
+      <div class="setup-grid">
+        <label for="clientId">رقم التطبيق (Application client ID)
+          <input id="clientId" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" dir="ltr"></label>
+        <label for="interval">التحديث التلقائي كل (دقيقة)
+          <input id="interval" type="number" min="1" max="60" value="2" dir="ltr"></label>
+      </div>
+      <p class="note">رابط إعادة التوجيه اللي تكتبه في بورتال مايكروسوفت: <span class="num" id="redirectUri"></span></p>
+    </details>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-tab="sales" type="button">المبيعات</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="crop" type="button">محصول بالتفصيل</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="traders" type="button">التجار</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="explore" type="button">مستكشف الملفات</button>
+  </nav>
+
+  <!-- SALES -->
+  <section id="tab-sales" class="tabpane" style="display:flex;flex-direction:column;gap:20px">
+    <div class="kpis" id="kpis"></div>
+    <div class="panel">
+      <div class="panel-head"><h2>البيع قبل وبعد المصاريف لكل محصول</h2><span class="muted" style="font-size:.82rem">طول العمود = إجمالي البيع، والأخضر = اللي وصل جيبك</span></div>
+      <div class="chart tall"><canvas id="cSales"></canvas></div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-head"><h2>صافي البيع للفدان</h2></div>
+        <div class="chart"><canvas id="cFeddan"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>الأوزان المحققة (طن)</h2></div>
+        <div class="chart"><canvas id="cWeight"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>ملخص المحاصيل وأفضل تاجر لكل محصول</h2><span class="muted" style="font-size:.82rem">أفضل تاجر = أعلى صافي سعر للكيلو، لتاجر أخد 1% على الأقل من المحصول، من غير القطاعي والكانتين والمطعم</span></div>
+      <div class="tbl"><table id="tCrops"></table></div>
+    </div>
+  </section>
+
+  <!-- CROP DETAIL -->
+  <section id="tab-crop" class="tabpane" hidden style="flex-direction:column;gap:20px">
+    <div class="row"><label for="cropSel" class="muted">المحصول</label><select id="cropSel"></select></div>
+    <div class="kpis" id="cropKpis"></div>
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-head"><h2>سعر البيع عبر الموسم (ج.م/كجم)</h2></div>
+        <div class="chart"><canvas id="cPrice"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>الكميات المباعة أسبوعياً (كجم)</h2></div>
+        <div class="chart"><canvas id="cWeekly"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>التجار في المحصول ده</h2><span class="muted" style="font-size:.82rem">مؤشر الأداء: 1.10 يعني التاجر جاب 10% فوق متوسط المحصول</span></div>
+      <div class="tbl"><table id="tCropTraders"></table></div>
+    </div>
+  </section>
+
+  <!-- TRADERS -->
+  <section id="tab-traders" class="tabpane" hidden style="flex-direction:column;gap:20px">
+    <div class="panel">
+      <div class="panel-head">
+        <h2>ترتيب التجار على كل المحاصيل</h2>
+        <div class="row"><label for="minKg" class="muted" style="font-size:.85rem">أقل كمية للدخول في الترتيب</label>
+          <select id="minKg"><option value="0">الكل</option><option value="1000" selected>1 طن</option><option value="5000">5 طن</option><option value="20000">20 طن</option></select></div>
+      </div>
+      <p class="note">مقارنة التجار بسعر الكيلو بس بتظلم اللي اشترى محاصيل رخيصة. عشان كده المؤشر هنا بيقارن كل تاجر بمتوسط نفس المحصول اللي اشتراه، فيبقى عادل بين الخيار والعنب.</p>
+      <div class="tbl"><table id="tTraders"></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>أكبر التجار في صافي المبيعات</h2></div>
+      <div class="chart"><canvas id="cTraders"></canvas></div>
+    </div>
+  </section>
+
+  <!-- EXPLORER -->
+  <section id="tab-explore" class="tabpane" hidden style="flex-direction:column;gap:20px">
+    <div class="panel">
+      <div class="panel-head"><h2>ارسم أي شيت من ملفاتك</h2></div>
+      <p class="note">للملفات اللي لسه ملهاش شاشة خاصة (العمالة، التسميد، الرش...). اختار الملف والشيت والعمود، والرسم بيتحدّث مع الملف.</p>
+      <div class="row">
+        <select id="exFile" aria-label="الملف"></select>
+        <select id="exSheet" aria-label="الشيت"></select>
+        <select id="exLabel" aria-label="عمود الأسماء"></select>
+        <select id="exValue" aria-label="عمود الأرقام"></select>
+        <select id="exType" aria-label="نوع الرسم"><option value="bar">أعمدة</option><option value="line">خط</option><option value="doughnut">دائري</option></select>
+      </div>
+      <div class="chart tall"><canvas id="cExplore"></canvas></div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+const SAMPLE = [];
+const $ = s => document.querySelector(s);
+const fmt = (n, d=0) => (n==null||isNaN(n)) ? '—' : Number(n).toLocaleString('en-US',{maximumFractionDigits:d,minimumFractionDigits:d});
+const fmtM = n => Math.abs(n)>=1e6 ? fmt(n/1e6,2)+' م' : Math.abs(n)>=1e3 ? fmt(n/1e3,0)+' ألف' : fmt(n);
+const store = { get(k){try{return localStorage.getItem(k)}catch(e){return null}}, set(k,v){try{localStorage.setItem(k,v)}catch(e){}} };
+const EXCLUDE_BEST = /قطاعي|كانتين|مطعم|مطبخ/;
+const MIN_SHARE = 0.01; // best trader must have taken at least 1% of the crop's weight
+const toast = m => { const t=$('#toast'); t.textContent=m; t.hidden=false; clearTimeout(toast.h); toast.h=setTimeout(()=>t.hidden=true,3500); };
+
+/* ---------- state ---------- */
+// file: {key, name, source:'sample'|'local'|'onedrive', id?, wb?, crops:[], modified}
+let files = [];
+let charts = {};
+
+/* ---------- Excel engine ---------- */
+function serialToDate(v){
+  if (v instanceof Date) return v;
+  if (typeof v==='number') return new Date(Math.round((v-25569)*864e5));
+  if (typeof v==='string'){ const d=new Date(v); return isNaN(d)?null:d; }
+  return null;
+}
+const N = v => (v===null||v===undefined||v==='') ? null : (typeof v==='number'? v : (isNaN(+v)? null : +v));
+function findCol(head, ...keys){ for(const k of keys){ const i=head.findIndex(h=>typeof h==='string'&&h.trim().startsWith(k)); if(i>=0) return i; } return -1; }
+
+// Recognises a crop sales sheet by its own headers, so a new crop sheet is picked up automatically
+function parseSalesSheet(ws){
+  const aoa = XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null});
+  let crop=null, feddan=null, hi=-1;
+  for(let r=0;r<Math.min(aoa.length,120);r++){
+    const row=aoa[r]||[];
+    const ci=row.findIndex(c=>typeof c==='string'&&c.trim()==='اسم المحصول');
+    if(ci>=0){ crop=row.slice(ci+1).find(c=>c!==null&&String(c).trim()!==''); }
+    const fi=row.findIndex(c=>typeof c==='string'&&c.trim()==='عدد الأفدنة');
+    if(fi>=0){ feddan=N(row.slice(fi+1).find(c=>c!==null)); }
+    if(row.some(c=>c==='التاريخ') && row.some(c=>c==='التاجر')){ hi=r; break; }
+  }
+  if(hi<0||!crop) return null;
+  const h=aoa[hi];
+  const c={date:findCol(h,'التاريخ'),trader:findCol(h,'التاجر'),units:findCol(h,'عدد الوحدات'),farm:findCol(h,'وزن المزرعة'),
+    agency:findCol(h,'وزن الوكالة'),price:findCol(h,'سعر البيع'),sale:findCol(h,'إجمالي البيع'),freight:findCol(h,'مصروف النولون','النولون'),
+    comm:findCol(h,'مصروف العمولة'),net:findCol(h,'صافي بيع')};
+  const rows=[];
+  for(let r=hi+1;r<aoa.length;r++){
+    const x=aoa[r]||[]; const g=i=>i>=0?x[i]:null;
+    const trader=g(c.trader)?String(g(c.trader)).trim():'';
+    const farm=N(g(c.farm));
+    if(!trader && !farm) continue;
+    const d=serialToDate(g(c.date));
+    rows.push([d?d.getTime():null,trader,N(g(c.units)),farm,N(g(c.agency)),N(g(c.price)),N(g(c.sale)),N(g(c.freight)),N(g(c.comm)),N(g(c.net))]);
+  }
+  return {crop:String(crop).trim(),feddan,rows};
+}
+function readWorkbook(buf){
+  const wb=XLSX.read(buf,{type:'array'});
+  const crops=[];
+  wb.SheetNames.forEach(n=>{ const p=parseSalesSheet(wb.Sheets[n]); if(p) crops.push(p); });
+  return {wb,crops};
+}
+
+/* ---------- analytics ---------- */
+function allCrops(){
+  const map=new Map();
+  files.forEach(f=>f.crops.forEach(c=>{
+    if(!map.has(c.crop)) map.set(c.crop,{crop:c.crop,feddan:c.feddan,rows:[]});
+    const m=map.get(c.crop); m.rows.push(...c.rows); if(c.feddan) m.feddan=c.feddan;
+  }));
+  return [...map.values()];
+}
+function rowNet(r){ if(r[9]!=null) return r[9]; if(r[6]!=null) return r[6]-(r[7]||0)-(r[8]||0); return 0; }
+function summarize(c){
+  let s={crop:c.crop,feddan:c.feddan||0,trips:0,units:0,farm:0,agency:0,agencyBase:0,gross:0,freight:0,comm:0,net:0,maxP:null,minP:null};
+  c.rows.forEach(r=>{
+    s.trips++; s.units+=r[2]||0; s.farm+=r[3]||0;
+    if(r[4]!=null&&r[3]!=null){ s.agency+=r[4]; s.agencyBase+=r[3]; }
+    s.gross+=r[6]||0; s.freight+=r[7]||0; s.comm+=r[8]||0; s.net+=rowNet(r);
+    if(r[5]){ s.maxP=Math.max(s.maxP??-Infinity,r[5]); s.minP=Math.min(s.minP??Infinity,r[5]); }
+  });
+  s.loss=s.agencyBase-s.agency; s.lossPct=s.agencyBase?s.loss/s.agencyBase:0;
+  s.netKg=s.farm?s.net/s.farm:0; s.perFeddan=s.feddan?s.net/s.feddan:0;
+  s.expPct=s.gross?(s.freight+s.comm)/s.gross:0;
+  return s;
+}
+function tradersOf(crops){
+  // per trader per crop, plus a fair index vs each crop's average net/kg
+  const t=new Map();
+  crops.forEach(c=>{
+    const s=summarize(c); const avg=s.netKg;
+    c.rows.forEach(r=>{
+      if(!r[1]||!(r[6]>0)||!r[3]) return;
+      if(!t.has(r[1])) t.set(r[1],{name:r[1],farm:0,agency:0,agencyBase:0,gross:0,comm:0,net:0,expected:0,crops:new Map()});
+      const x=t.get(r[1]); const n=rowNet(r);
+      x.farm+=r[3]; x.gross+=r[6]; x.comm+=r[8]||0; x.net+=n; x.expected+=r[3]*avg;
+      if(r[4]!=null){x.agency+=r[4]; x.agencyBase+=r[3];}
+      const cc=x.crops.get(c.crop)||{farm:0,net:0,expected:0}; cc.farm+=r[3]; cc.net+=n; cc.expected+=r[3]*avg; x.crops.set(c.crop,cc);
+    });
+  });
+  return [...t.values()].map(x=>({...x,netKg:x.net/x.farm,index:x.expected?x.net/x.expected:0,commPct:x.gross?x.comm/x.gross:0,lossPct:x.agencyBase?(x.agencyBase-x.agency)/x.agencyBase:0}));
+}
+function bestTrader(c){
+  const total=summarize(c).farm;
+  const ts=tradersOf([c]).filter(t=>!EXCLUDE_BEST.test(t.name)&&t.farm>=total*MIN_SHARE);
+  return ts.sort((a,b)=>b.netKg-a.netKg)[0]||null;
+}
+
+/* ---------- charts ---------- */
+const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function baseOpts(extra={}){
+  const fg=tok('--muted'), grid=tok('--line');
+  return Object.assign({responsive:true,maintainAspectRatio:false,animation:{duration:400},
+    plugins:{legend:{rtl:true,labels:{color:tok('--soil'),font:{family:'IBM Plex Sans Arabic'},boxWidth:12}},
+      tooltip:{rtl:true,textDirection:'rtl',bodyFont:{family:'IBM Plex Sans Arabic'},titleFont:{family:'IBM Plex Sans Arabic'}}},
+    scales:{x:{ticks:{color:fg,font:{family:'IBM Plex Sans Arabic'}},grid:{color:grid}},y:{ticks:{color:fg,font:{family:'IBM Plex Sans Arabic'}},grid:{color:grid}}}},extra);
+}
+function draw(id,cfg){ if(charts[id]) charts[id].destroy(); charts[id]=new Chart(document.getElementById(id),cfg); }
+
+/* ---------- render ---------- */
+function kpi(label,value,sub,main){ return `<div class="kpi${main?' main':''}"><span class="l">${label}</span><span class="v num">${value}</span>${sub?`<span class="s">${sub}</span>`:''}</div>`; }
+
+function renderSales(){
+  const crops=allCrops();
+  if(!crops.length){ ['cSales','cFeddan','cWeight'].forEach(id=>{if(charts[id]){charts[id].destroy();delete charts[id];}}); $('#tCrops').innerHTML='';
+    $('#kpis').innerHTML='<div class="empty">'+(files.length?'مفيش شيتات مبيعات في الملفات المربوطة.':'لسه مفيش ملفات. دوس "ربط ملفات من وان درايف" فوق، أو ارفع ملف الإكسل من جهازك.')+'</div>'; return; }
+  const S=crops.map(summarize).sort((a,b)=>b.net-a.net);
+  const T=S.reduce((a,s)=>{for(const k of['gross','freight','comm','net','farm','feddan','loss','agencyBase'])a[k]=(a[k]||0)+s[k];return a},{});
+  $('#kpis').innerHTML=
+    kpi('صافي المبيعات',fmtM(T.net),'بعد النولون والعمولة',true)+
+    kpi('إجمالي البيع',fmtM(T.gross),'قبل المصاريف')+
+    kpi('المصاريف',fmtM(T.freight+T.comm),`${fmt((T.freight+T.comm)/T.gross*100,1)}% من البيع`)+
+    kpi('الوزن المباع',fmt(T.farm/1000,1)+' طن',`فرق أوزان ${fmt(T.loss/1000,1)} طن`)+
+    kpi('صافي الكيلو',fmt(T.net/T.farm,2)+' ج',`متوسط كل المحاصيل`)+
+    kpi('صافي الفدان',fmtM(T.net/T.feddan),`على ${fmt(T.feddan,2)} فدان`);
+
+  const labels=S.map(s=>s.crop);
+  draw('cSales',{type:'bar',data:{labels,datasets:[
+    {label:'صافي البيع',data:S.map(s=>s.net),backgroundColor:tok('--leaf'),stack:'a'},
+    {label:'العمولة',data:S.map(s=>s.comm),backgroundColor:tok('--wheat'),stack:'a'},
+    {label:'النولون',data:S.map(s=>s.freight),backgroundColor:tok('--clay'),stack:'a'}]},
+    options:baseOpts({indexAxis:'y',plugins:{...baseOpts().plugins,tooltip:{...baseOpts().plugins.tooltip,callbacks:{
+      label:c=>` ${c.dataset.label}: ${fmt(c.raw)} ج.م`,footer:it=>'إجمالي البيع: '+fmt(S[it[0].dataIndex].gross)+' ج.م'}}},
+      scales:{x:{...baseOpts().scales.x,stacked:true,ticks:{...baseOpts().scales.x.ticks,callback:v=>fmtM(v)}},y:{...baseOpts().scales.y,stacked:true,position:'right'}}})});
+
+  const F=[...S].filter(s=>s.feddan).sort((a,b)=>b.perFeddan-a.perFeddan);
+  draw('cFeddan',{type:'bar',data:{labels:F.map(s=>s.crop),datasets:[{label:'صافي الفدان (ج.م)',data:F.map(s=>s.perFeddan),backgroundColor:tok('--leaf'),borderRadius:4}]},
+    options:baseOpts({plugins:{...baseOpts().plugins,legend:{display:false}},scales:{x:baseOpts().scales.x,y:{...baseOpts().scales.y,position:'right',ticks:{...baseOpts().scales.y.ticks,callback:v=>fmtM(v)}}}})});
+
+  const W=[...S].sort((a,b)=>b.farm-a.farm);
+  draw('cWeight',{type:'bar',data:{labels:W.map(s=>s.crop),datasets:[
+    {label:'وزن المزرعة',data:W.map(s=>s.farm/1000),backgroundColor:tok('--wheat'),borderRadius:4},
+    {label:'فرق الوزن',data:W.map(s=>s.loss/1000),backgroundColor:tok('--bad'),borderRadius:4}]},
+    options:baseOpts({scales:{x:baseOpts().scales.x,y:{...baseOpts().scales.y,position:'right'}}})});
+
+  const lossChip=p=>p<=0.005?`<span class="chip good">${fmt(p*100,1)}%</span>`:p<0.03?`<span class="chip warn">${fmt(p*100,1)}%</span>`:`<span class="chip bad">${fmt(p*100,1)}%</span>`;
+  $('#tCrops').innerHTML=`<thead><tr><th>المحصول</th><th class="n">فدان</th><th class="n">إجمالي البيع</th><th class="n">المصاريف</th><th class="n">صافي البيع</th><th class="n">صافي الكيلو</th><th class="n">الوزن (كجم)</th><th class="n">فرق الوزن</th><th>أفضل تاجر</th><th class="n">صافي كيلو التاجر</th></tr></thead><tbody>`+
+    S.map(s=>{const c=crops.find(x=>x.crop===s.crop);const b=bestTrader(c);return `<tr><td><b>${s.crop}</b></td><td class="n">${fmt(s.feddan,2)}</td><td class="n">${fmt(s.gross)}</td><td class="n">${fmt(s.freight+s.comm)}</td><td class="n"><b>${fmt(s.net)}</b></td><td class="n">${fmt(s.netKg,2)}</td><td class="n">${fmt(s.farm)}</td><td class="n">${lossChip(s.lossPct)}</td><td>${b?b.name:'—'}</td><td class="n">${b?fmt(b.netKg,2):'—'}</td></tr>`}).join('')+
+    `<tr class="best"><td><b>الإجمالي</b></td><td class="n">${fmt(T.feddan,2)}</td><td class="n">${fmt(T.gross)}</td><td class="n">${fmt(T.freight+T.comm)}</td><td class="n"><b>${fmt(T.net)}</b></td><td class="n">${fmt(T.net/T.farm,2)}</td><td class="n">${fmt(T.farm)}</td><td class="n">${lossChip(T.agencyBase?T.loss/T.agencyBase:0)}</td><td></td><td></td></tr></tbody>`;
+}
+
+function renderCrop(){
+  const crops=allCrops(); const sel=$('#cropSel');
+  const cur=sel.value; sel.innerHTML=crops.map(c=>`<option>${c.crop}</option>`).join('');
+  if(crops.some(c=>c.crop===cur)) sel.value=cur;
+  const c=crops.find(x=>x.crop===sel.value); if(!c) return;
+  const s=summarize(c);
+  $('#cropKpis').innerHTML=kpi('صافي البيع',fmtM(s.net),`من ${fmtM(s.gross)} قبل المصاريف`,true)+kpi('صافي الكيلو',fmt(s.netKg,2)+' ج',`أعلى سعر ${fmt(s.maxP,2)} · أقل ${fmt(s.minP,2)}`)+
+    kpi('الوزن',fmt(s.farm/1000,1)+' طن',`${s.trips} نقلة`)+kpi('صافي الفدان',fmtM(s.perFeddan),`${fmt(s.feddan,2)} فدان`)+kpi('المصاريف',fmt(s.expPct*100,1)+'%','نولون + عمولة');
+  const pts=c.rows.filter(r=>r[0]&&r[5]&&r[3]>=50&&!EXCLUDE_BEST.test(r[1])).sort((a,b)=>a[0]-b[0]);
+  const dl=t=>new Date(t).toLocaleDateString('ar-EG',{day:'numeric',month:'short'});
+  draw('cPrice',{type:'line',data:{labels:pts.map(r=>dl(r[0])),datasets:[{label:'سعر البيع',data:pts.map(r=>r[5]),borderColor:tok('--leaf'),backgroundColor:tok('--leaf-soft'),fill:true,tension:.25,pointRadius:2}]},
+    options:baseOpts({plugins:{...baseOpts().plugins,legend:{display:false},tooltip:{...baseOpts().plugins.tooltip,callbacks:{label:x=>` ${fmt(x.raw,2)} ج/كجم — ${pts[x.dataIndex][1]}`}}},scales:{x:{...baseOpts().scales.x,reverse:true,ticks:{...baseOpts().scales.x.ticks,maxTicksLimit:8}},y:{...baseOpts().scales.y,position:'right'}}})});
+  const wk=new Map(); c.rows.forEach(r=>{ if(!r[0]) return; const d=new Date(r[0]); d.setDate(d.getDate()-((d.getDay()+1)%7)); d.setHours(0,0,0,0); wk.set(d.getTime(),(wk.get(d.getTime())||0)+(r[3]||0)); });
+  const wks=[...wk.entries()].sort((a,b)=>a[0]-b[0]);
+  draw('cWeekly',{type:'bar',data:{labels:wks.map(w=>dl(w[0])),datasets:[{label:'كجم',data:wks.map(w=>w[1]),backgroundColor:tok('--wheat'),borderRadius:3}]},
+    options:baseOpts({plugins:{...baseOpts().plugins,legend:{display:false}},scales:{x:{...baseOpts().scales.x,reverse:true},y:{...baseOpts().scales.y,position:'right'}}})});
+  const ts=tradersOf([c]).sort((a,b)=>b.netKg-a.netKg); const bt=bestTrader(c); const best=bt&&ts.find(t=>t.name===bt.name);
+  $('#tCropTraders').innerHTML=`<thead><tr><th>التاجر</th><th class="n">الوزن (كجم)</th><th class="n">صافي البيع</th><th class="n">صافي الكيلو</th><th class="n">مؤشر الأداء</th><th class="n">العمولة</th><th class="n">فرق الوزن</th></tr></thead><tbody>`+
+    ts.map(t=>`<tr${t===best?' class="best"':''}><td>${t.name}${t===best?' <span class="chip good">الأفضل</span>':''}</td><td class="n">${fmt(t.farm)}</td><td class="n">${fmt(t.net)}</td><td class="n">${fmt(t.netKg,2)}</td><td class="n">${fmt(t.index,2)}</td><td class="n">${fmt(t.commPct*100,1)}%</td><td class="n">${fmt(t.lossPct*100,1)}%</td></tr>`).join('')+'</tbody>';
+}
+
+function renderTraders(){
+  const min=+$('#minKg').value; const ts=tradersOf(allCrops()).filter(t=>t.farm>=min&&!EXCLUDE_BEST.test(t.name)).sort((a,b)=>b.index-a.index);
+  const idxChip=i=>i>=1.05?`<span class="chip good">${fmt(i,2)}</span>`:i>=0.95?`<span class="chip warn">${fmt(i,2)}</span>`:`<span class="chip bad">${fmt(i,2)}</span>`;
+  $('#tTraders').innerHTML=`<thead><tr><th>#</th><th>التاجر</th><th>المحاصيل</th><th class="n">الوزن (كجم)</th><th class="n">صافي البيع</th><th class="n">مؤشر الأداء</th><th class="n">العمولة</th><th class="n">فرق الوزن</th></tr></thead><tbody>`+
+    ts.map((t,i)=>`<tr${i===0?' class="best"':''}><td class="n">${i+1}</td><td><b>${t.name}</b></td><td>${[...t.crops.keys()].join('، ')}</td><td class="n">${fmt(t.farm)}</td><td class="n">${fmt(t.net)}</td><td class="n">${idxChip(t.index)}</td><td class="n">${fmt(t.commPct*100,1)}%</td><td class="n">${fmt(t.lossPct*100,1)}%</td></tr>`).join('')+'</tbody>';
+  const top=[...ts].sort((a,b)=>b.net-a.net).slice(0,8);
+  draw('cTraders',{type:'bar',data:{labels:top.map(t=>t.name),datasets:[{label:'صافي البيع',data:top.map(t=>t.net),backgroundColor:tok('--leaf'),borderRadius:4}]},
+    options:baseOpts({indexAxis:'y',plugins:{...baseOpts().plugins,legend:{display:false}},scales:{x:{...baseOpts().scales.x,ticks:{...baseOpts().scales.x.ticks,callback:v=>fmtM(v)}},y:{...baseOpts().scales.y,position:'right'}}})});
+}
+
+/* explorer: guesses the header row (first row with 3+ text cells) */
+function sheetTable(ws){
+  const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null});
+  let hi=aoa.findIndex(r=>(r||[]).filter(c=>typeof c==='string'&&c.trim()).length>=3); if(hi<0) hi=0;
+  const head=(aoa[hi]||[]).map((h,i)=>h?String(h).trim():`عمود ${i+1}`);
+  return {head,rows:aoa.slice(hi+1).filter(r=>r&&r.some(c=>c!==null))};
+}
+function renderExplore(keep){
+  const wbFiles=files.filter(f=>f.wb);
+  const fs=$('#exFile');
+  if(!wbFiles.length){ fs.innerHTML='<option>ارفع أو اربط ملف إكسل الأول</option>'; ['#exSheet','#exLabel','#exValue'].forEach(s=>$(s).innerHTML=''); if(charts.cExplore){charts.cExplore.destroy();delete charts.cExplore;} return; }
+  const prev={f:fs.value,s:$('#exSheet').value,l:$('#exLabel').value,v:$('#exValue').value};
+  fs.innerHTML=wbFiles.map(f=>`<option value="${f.key}">${f.name}</option>`).join(''); if(wbFiles.some(f=>f.key===prev.f)) fs.value=prev.f;
+  const f=wbFiles.find(x=>x.key===fs.value);
+  $('#exSheet').innerHTML=f.wb.SheetNames.map(n=>`<option>${n}</option>`).join(''); if(f.wb.SheetNames.includes(prev.s)) $('#exSheet').value=prev.s;
+  const {head,rows}=sheetTable(f.wb.Sheets[$('#exSheet').value]);
+  const numCols=head.map((h,i)=>i).filter(i=>rows.filter(r=>typeof r[i]==='number').length>=rows.length*0.4);
+  $('#exLabel').innerHTML=head.map((h,i)=>`<option value="${i}">${h}</option>`).join('');
+  $('#exValue').innerHTML=numCols.map(i=>`<option value="${i}">${head[i]}</option>`).join('')||'<option value="-1">مفيش أعمدة أرقام</option>';
+  if(keep&&[...$('#exLabel').options].some(o=>o.value===prev.l)) $('#exLabel').value=prev.l; else { const t=head.findIndex((h,i)=>!numCols.includes(i)); $('#exLabel').value=Math.max(0,t); }
+  if(keep&&[...$('#exValue').options].some(o=>o.value===prev.v)) $('#exValue').value=prev.v;
+  drawExplore();
+}
+function drawExplore(){
+  const f=files.find(x=>x.key===$('#exFile').value); if(!f||!f.wb) return;
+  const {rows}=sheetTable(f.wb.Sheets[$('#exSheet').value]); const li=+$('#exLabel').value, vi=+$('#exValue').value; if(vi<0) return;
+  const agg=new Map(); rows.forEach(r=>{ const v=r[vi]; if(typeof v!=='number') return; let l=r[li]; if(l==null) return; if(typeof l==='number'&&l>30000&&l<60000) l=serialToDate(l).toLocaleDateString('ar-EG'); l=String(l).trim(); if(/إجمالي|الإجمالي/.test(l)) return; agg.set(l,(agg.get(l)||0)+v); });
+  const ent=[...agg.entries()].slice(0,40); const type=$('#exType').value;
+  const pal=['--leaf','--wheat','--clay','--sky','--bad','--muted'].map(tok);
+  draw('cExplore',{type,data:{labels:ent.map(e=>e[0]),datasets:[{label:$('#exValue').selectedOptions[0]?.text||'',data:ent.map(e=>e[1]),
+    backgroundColor:type==='doughnut'?ent.map((e,i)=>pal[i%pal.length]):tok('--leaf'),borderColor:type==='line'?tok('--leaf'):tok('--surface'),borderRadius:type==='bar'?4:0,tension:.25}]},
+    options:type==='doughnut'?{responsive:true,maintainAspectRatio:false,plugins:baseOpts().plugins}:baseOpts({plugins:{...baseOpts().plugins,legend:{display:false}},scales:{x:{...baseOpts().scales.x,reverse:true},y:{...baseOpts().scales.y,position:'right'}}})});
+}
+
+function renderFiles(){
+  $('#fileList').innerHTML=files.map(f=>`<span class="file"><span class="tag${f.source==='onedrive'?' od':''}">${{sample:'تجريبي',local:'من الجهاز',onedrive:'وان درايف'}[f.source]}</span><b>${f.name}</b><span class="muted">${f.crops.length?f.crops.length+' محاصيل':(f.wb?f.wb.SheetNames.length+' شيت':'')}</span><button class="x" type="button" aria-label="شيل الملف" data-rm="${f.key}">×</button></span>`).join('')||'<span class="muted">مفيش ملفات مربوطة.</span>';
+}
+function renderAll(){
+  renderFiles(); renderSales(); renderCrop(); renderTraders(); renderExplore(true);
+  $('#lastUpd').textContent=new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
+  const od=files.some(f=>f.source==='onedrive');
+  $('#livePill').className='pill '+(od?'live':'idle'); $('#liveTxt').textContent=od?'متصل بوان درايف — تحديث تلقائي':(files.some(f=>f.source==='local')?'ملفات من الجهاز':(SAMPLE.length?'بيانات تجريبية من ملف المبيعات':'مش متصل'));
+}
+
+/* ---------- tabs ---------- */
+document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',x===b));
+  document.querySelectorAll('.tabpane').forEach(p=>{p.hidden=p.id!=='tab-'+b.dataset.tab; if(!p.hidden)p.style.display='flex';});
+  Object.values(charts).forEach(c=>c.resize());
+}));
+$('#cropSel').addEventListener('change',renderCrop);
+$('#minKg').addEventListener('change',renderTraders);
+$('#exFile').addEventListener('change',()=>renderExplore(false));
+$('#exSheet').addEventListener('change',()=>renderExplore(false));
+['#exLabel','#exValue','#exType'].forEach(s=>$(s).addEventListener('change',drawExplore));
+$('#fileList').addEventListener('click',e=>{const k=e.target.dataset.rm; if(!k) return; files=files.filter(f=>f.key!==k); saveOdSelection(); if(!files.length) loadSample(); renderAll();});
+
+/* ---------- local files ---------- */
+$('#localFiles').addEventListener('change',async e=>{
+  const list=[...e.target.files]; if(!list.length) return;
+  files=files.filter(f=>f.source!=='sample');
+  for(const file of list){
+    const {wb,crops}=readWorkbook(new Uint8Array(await file.arrayBuffer()));
+    files=files.filter(f=>f.key!=='local:'+file.name);
+    files.push({key:'local:'+file.name,name:file.name,source:'local',wb,crops,modified:file.lastModified});
+  }
+  e.target.value=''; renderAll(); toast('اتقرا '+list.length+' ملف');
+});
+
+/* ---------- OneDrive (Microsoft Graph) ---------- */
+const REDIRECT=location.origin+location.pathname;
+$('#redirectUri').textContent=REDIRECT;
+const cloudHost=!/claude/.test(location.hostname) && location.protocol==='https:';
+if(!cloudHost){ const n=$('#hostNote'); n.hidden=false;
+  if(location.protocol==='file:') n.textContent='إنت فاتح الملف من على جهازك مباشرة، فالربط بوان درايف مش هيشتغل كده. ارفع الملف على Netlify وافتحه من الرابط اللي يطلعلك. لحد كده تقدر تدوس "رفع ملفات من الجهاز" وتشوف تحليل ملفاتك عادي.'; }
+$('#clientId').value=store.get('farm.clientId')||'';
+$('#interval').value=store.get('farm.interval')||2;
+$('#clientId').addEventListener('change',e=>{store.set('farm.clientId',e.target.value.trim()); msalApp=null;});
+$('#interval').addEventListener('change',e=>{store.set('farm.interval',e.target.value); startPolling();});
+let msalApp=null, account=null;
+const SCOPES=['Files.Read'];
+function loadScript(src){return new Promise((ok,no)=>{if(window.msal)return ok();const s=document.createElement('script');s.src=src;s.onload=ok;s.onerror=no;document.head.appendChild(s);});}
+async function getMsal(){
+  const id=store.get('farm.clientId'); if(!id) throw new Error('no-client');
+  if(msalApp) return msalApp;
+  await loadScript('https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.27.0/lib/msal-browser.min.js');
+  msalApp=new msal.PublicClientApplication({auth:{clientId:id,authority:'https://login.microsoftonline.com/common',redirectUri:REDIRECT},cache:{cacheLocation:'localStorage'}});
+  await msalApp.initialize();
+  const res=await msalApp.handleRedirectPromise(); if(res) account=res.account;
+  account=account||msalApp.getAllAccounts()[0]||null;
+  return msalApp;
+}
+async function token(){
+  const m=await getMsal();
+  if(!account){ await m.loginRedirect({scopes:SCOPES}); return null; }
+  try{ return (await m.acquireTokenSilent({scopes:SCOPES,account})).accessToken; }
+  catch(e){ await m.acquireTokenRedirect({scopes:SCOPES,account}); return null; }
+}
+async function graph(path,asBuffer){
+  const t=await token(); if(!t) return null;
+  const r=await fetch('https://graph.microsoft.com/v1.0'+path,{headers:{Authorization:'Bearer '+t}});
+  if(!r.ok) throw new Error('graph '+r.status);
+  return asBuffer?r.arrayBuffer():r.json();
+}
+function saveOdSelection(){ store.set('farm.odFiles',JSON.stringify(files.filter(f=>f.source==='onedrive').map(f=>({id:f.id,name:f.name})))); }
+async function loadOdFile(id,name){
+  const meta=await graph(`/me/drive/items/${id}?$select=id,name,lastModifiedDateTime`); if(!meta) return;
+  const old=files.find(f=>f.key==='od:'+id);
+  if(old && old.modified===meta.lastModifiedDateTime) return false;
+  const buf=await graph(`/me/drive/items/${id}/content`,true);
+  const {wb,crops}=readWorkbook(new Uint8Array(buf));
+  files=files.filter(f=>f.key!=='od:'+id && f.source!=='sample');
+  files.push({key:'od:'+id,id,name:meta.name||name,source:'onedrive',wb,crops,modified:meta.lastModifiedDateTime});
+  return true;
+}
+$('#odBtn').addEventListener('click',async()=>{
+  if(!cloudHost){ toast(location.protocol==='file:'?'الربط محتاج التطبيق يكون على رابط Netlify، مش ملف مفتوح من الجهاز':'الربط بوان درايف بيشتغل من رابط التطبيق الخاص بيك'); return; }
+  if(!store.get('farm.clientId')){ $('#setupBox').open=true; $('#clientId').focus(); toast('حط رقم التطبيق الأول'); return; }
+  try{
+    const res=await graph(`/me/drive/root/search(q='.xlsx')?$select=id,name,lastModifiedDateTime,parentReference&$top=200`); if(!res) return;
+    const linked=new Set(files.filter(f=>f.source==='onedrive').map(f=>f.id));
+    const p=$('#odPicker'); p.hidden=false;
+    p.innerHTML=`<div class="picker">${res.value.filter(x=>/\.xls[xm]?$/i.test(x.name)).map(x=>`<label><input type="checkbox" value="${x.id}" data-name="${x.name}" ${linked.has(x.id)?'checked':''}> <b>${x.name}</b> <span class="muted" style="font-size:.78rem">${(x.parentReference?.path||'').replace('/drive/root:','')||'/'}</span></label>`).join('')||'<div class="empty">مفيش ملفات إكسل في الوان درايف</div>'}</div><div class="row" style="margin-top:8px"><button class="btn primary" id="odSave" type="button">ربط الملفات المختارة</button><button class="btn" id="odCancel" type="button">إلغاء</button></div>`;
+    $('#odCancel').onclick=()=>p.hidden=true;
+    $('#odSave').onclick=async()=>{
+      const sel=[...p.querySelectorAll('input:checked')].map(i=>({id:i.value,name:i.dataset.name}));
+      files=files.filter(f=>f.source!=='onedrive'||sel.some(s=>s.id===f.id));
+      for(const s of sel) await loadOdFile(s.id,s.name);
+      if(!files.length) loadSample();
+      saveOdSelection(); p.hidden=true; renderAll(); startPolling(); toast('اتربط '+sel.length+' ملف من وان درايف');
+    };
+  }catch(e){ toast(e.message==='no-client'?'حط رقم التطبيق في الإعدادات':'حصلت مشكلة في الاتصال بوان درايف: '+e.message); }
+});
+async function refreshOd(manual){
+  const ods=files.filter(f=>f.source==='onedrive'); if(!ods.length){ if(manual) toast(files.some(f=>f.source==='local')?'ملفات الجهاز: ارفعها تاني بعد التعديل':'البيانات التجريبية ثابتة'); return; }
+  try{ let changed=false; for(const f of ods){ if(await loadOdFile(f.id,f.name)) changed=true; }
+    if(changed||manual) renderAll(); if(changed) toast('اتحدّثت البيانات من وان درايف'); }
+  catch(e){ if(manual) toast('مقدرتش أوصل لوان درايف: '+e.message); }
+}
+let poll=null;
+function startPolling(){ clearInterval(poll); if(!files.some(f=>f.source==='onedrive')) return; poll=setInterval(()=>refreshOd(false),Math.max(1,+$('#interval').value||2)*60000); }
+$('#refreshBtn').addEventListener('click',()=>refreshOd(true));
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshOd(false); });
+
+/* ---------- boot ---------- */
+function loadSample(){ if(!SAMPLE.length){ files=[]; return; } files=[{key:'sample',name:'مبيعات المحاصيل 2026',source:'sample',wb:null,crops:SAMPLE,modified:null}]; }
+async function boot(){
+  loadSample(); renderAll();
+  if(cloudHost && store.get('farm.clientId')){
+    try{
+      await getMsal();
+      const saved=JSON.parse(store.get('farm.odFiles')||'[]');
+      if(account && saved.length){ for(const s of saved) await loadOdFile(s.id,s.name); renderAll(); startPolling(); }
+    }catch(e){ console.warn(e); }
+  }
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>renderAll());
+new MutationObserver(()=>renderAll()).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+boot();
+</script>
+
+</body>
+</html>
