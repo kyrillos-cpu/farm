@@ -92,6 +92,15 @@ tr.best td{background:var(--leaf-soft)}
 .chip.bad{color:var(--bad);border:1px solid var(--bad)}
 .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .empty{padding:40px 16px;text-align:center;color:var(--muted)}
+.seasons{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:8px 20px;font-weight:700;cursor:pointer;color:var(--muted);font-family:var(--f-display);font-size:.95rem}
+.seg button+button{border-inline-start:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--leaf);color:var(--bg)}
+.seg button:focus-visible{outline:2px solid var(--wheat);outline-offset:-2px}
+.chg{font-weight:600;font-variant-numeric:tabular-nums}
+.chg.up{color:var(--good)} .chg.down{color:var(--bad)}
+.tag.season{background:var(--wheat);color:var(--bg)}
 .toast{position:fixed;bottom:calc(16px + env(safe-area-inset-bottom,0px));inset-inline-start:16px;background:var(--soil);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:.88rem;max-width:calc(100% - 32px)}
 </style>
 
@@ -142,6 +151,8 @@ tr.best td{background:var(--leaf-soft)}
       <p class="note">رابط إعادة التوجيه اللي تكتبه في بورتال مايكروسوفت: <span class="num" id="redirectUri"></span></p>
     </details>
   </section>
+
+  <div class="seasons" id="seasonBar" hidden></div>
 
   <nav class="tabs" role="tablist">
     <button class="tab" role="tab" aria-selected="true" data-tab="sales" type="button">المبيعات</button>
@@ -225,6 +236,32 @@ tr.best td{background:var(--leaf-soft)}
       <div class="chart tall"><canvas id="cExplore"></canvas></div>
     </div>
   </section>
+
+  <!-- SEASON COMPARE -->
+  <section id="tab-compare" hidden style="flex-direction:column;gap:20px">
+    <div class="panel">
+      <div class="panel-head"><h2>ملخص المواسم</h2><span class="muted" style="font-size:.82rem">التغيير = آخر موسم مقارنة باللي قبله</span></div>
+      <div class="tbl"><table id="tCmpTotals"></table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>صافي البيع لكل محصول في كل موسم</h2></div>
+      <div class="chart tall"><canvas id="cCmpNet"></canvas></div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-head"><h2>صافي سعر الكيلو (ج.م)</h2></div>
+        <div class="chart"><canvas id="cCmpKg"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>الأوزان المباعة (طن)</h2></div>
+        <div class="chart"><canvas id="cCmpWt"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>المحاصيل موسم بموسم</h2><span class="muted" style="font-size:.82rem">"—" يعني المحصول ماتزرعش في الموسم ده</span></div>
+      <div class="tbl"><table id="tCmpCrops"></table></div>
+    </div>
+  </section>
 </div>
 <div class="toast" id="toast" hidden></div>
 
@@ -291,9 +328,17 @@ function readWorkbook(buf){
 }
 
 /* ---------- analytics ---------- */
-function allCrops(){
+let season=store.get('farm.season')||null, mode=store.get('farm.mode')||'season';
+function detectSeason(name,crops){
+  const m=String(name||'').match(/20\d\d/); if(m) return m[0];
+  const ds=[]; (crops||[]).forEach(c=>c.rows.forEach(r=>{ if(r[0]) ds.push(r[0]); }));
+  if(!ds.length) return 'موسم'; ds.sort((a,b)=>a-b); return String(new Date(ds[Math.floor(ds.length/2)]).getFullYear());
+}
+function seasonsList(){ return [...new Set(files.filter(f=>f.crops.length).map(f=>f.season))].sort().reverse(); }
+function allCrops(forSeason){
+  const sn=forSeason??season;
   const map=new Map();
-  files.forEach(f=>f.crops.forEach(c=>{
+  files.filter(f=>f.season===sn).forEach(f=>f.crops.forEach(c=>{
     if(!map.has(c.crop)) map.set(c.crop,{crop:c.crop,feddan:c.feddan,rows:[]});
     const m=map.get(c.crop); m.rows.push(...c.rows); if(c.feddan) m.feddan=c.feddan;
   }));
@@ -454,13 +499,64 @@ function drawExplore(){
 }
 
 function renderFiles(){
-  $('#fileList').innerHTML=files.map(f=>`<span class="file"><span class="tag${f.source==='onedrive'||f.source==='link'?' od':''}">${{sample:'تجريبي',local:'من الجهاز',onedrive:'وان درايف',link:'Google Sheets'}[f.source]}</span><b>${f.name}</b><span class="muted">${f.crops.length?f.crops.length+' محاصيل':(f.wb?f.wb.SheetNames.length+' شيت':'')}</span><button class="x" type="button" aria-label="شيل الملف" data-rm="${f.key}">×</button></span>`).join('')||'<span class="muted">مفيش ملفات مربوطة.</span>';
+  $('#fileList').innerHTML=files.map(f=>`<span class="file"><span class="tag${f.source==='onedrive'||f.source==='link'?' od':''}">${{sample:'تجريبي',local:'من الجهاز',onedrive:'وان درايف',link:'Google Sheets'}[f.source]}</span><b>${f.name}</b>${f.crops.length?`<span class="tag season">موسم ${f.season}</span>`:''}<span class="muted">${f.crops.length?f.crops.length+' محاصيل':(f.wb?f.wb.SheetNames.length+' شيت':'')}</span><button class="x" type="button" aria-label="شيل الملف" data-rm="${f.key}">×</button></span>`).join('')||'<span class="muted">مفيش ملفات مربوطة.</span>';
+}
+function renderSeasonBar(){
+  const ss=seasonsList();
+  if(!ss.includes(season)) season=ss[0]||null;
+  const bar=$('#seasonBar');
+  if(ss.length<2){ bar.hidden=true; mode='season'; }
+  else{
+    bar.hidden=false;
+    bar.innerHTML='<span class="muted">الموسم</span><div class="seg" role="group" aria-label="اختار الموسم">'+
+      ss.map(x=>`<button type="button" data-season="${x}" aria-pressed="${mode==='season'&&x===season}">${x}</button>`).join('')+
+      `<button type="button" data-mode="compare" aria-pressed="${mode==='compare'}">مقارنة</button></div>`;
+  }
+  const cmp=mode==='compare';
+  document.querySelector('nav.tabs').hidden=cmp;
+  $('#tab-compare').hidden=!cmp; if(cmp) $('#tab-compare').style.display='flex';
+  const sel=document.querySelector('.tab[aria-selected="true"]')?.dataset.tab||'sales';
+  document.querySelectorAll('.tabpane').forEach(p=>{ p.hidden=cmp||p.id!=='tab-'+sel; if(!p.hidden) p.style.display='flex'; });
+}
+$('#seasonBar').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  if(b.dataset.mode==='compare') mode='compare'; else { mode='season'; season=b.dataset.season; }
+  store.set('farm.season',season||''); store.set('farm.mode',mode);
+  renderAll(); Object.values(charts).forEach(c=>c.resize());
+});
+const pct=(a,b)=>(b&&isFinite(a)&&isFinite(b))?(a-b)/Math.abs(b):null;
+const chgCell=(v,dir=1)=>v==null?'<td class="n">—</td>':`<td class="n"><span class="chg ${dir===0?'':((v>=0)===(dir>0)?'up':'down')}">${v>=0?'▲':'▼'} ${fmt(Math.abs(v)*100,1)}%</span></td>`;
+function renderCompare(){
+  const ss=seasonsList(); if(ss.length<2) return;
+  const asc=[...ss].reverse(); // oldest → newest, for chart order
+  const per={}; ss.forEach(x=>{ per[x]=allCrops(x).map(summarize); });
+  const tot=x=>per[x].reduce((a,s)=>{ for(const k of['gross','freight','comm','net','farm','feddan'])a[k]=(a[k]||0)+s[k]; return a; },{});
+  const T={}; ss.forEach(x=>T[x]=tot(x));
+  const [nw,pv]=ss;
+  const rows=[['صافي البيع',x=>T[x].net,0],['إجمالي البيع',x=>T[x].gross,0],['المصاريف (نولون + عمولة)',x=>T[x].freight+T[x].comm,0,-1],
+    ['الوزن المباع (كجم)',x=>T[x].farm,0],['صافي سعر الكيلو',x=>T[x].net/T[x].farm,2],['عدد المحاصيل',x=>per[x].length,0,0]];
+  $('#tCmpTotals').innerHTML=`<thead><tr><th></th>${ss.map(x=>`<th class="n">موسم ${x}</th>`).join('')}<th class="n">التغيير</th></tr></thead><tbody>`+
+    rows.map(([l,f,d,dir=1])=>`<tr><td><b>${l}</b></td>${ss.map(x=>`<td class="n">${fmt(f(x),d)}</td>`).join('')}${chgCell(pct(f(nw),f(pv)),dir)}</tr>`).join('')+'</tbody>';
+  const names=[]; ss.forEach(x=>per[x].slice().sort((a,b)=>b.net-a.net).forEach(s=>{ if(!names.includes(s.crop)) names.push(s.crop); }));
+  const get=(x,c)=>per[x].find(s=>s.crop===c);
+  const pal=['--leaf','--wheat','--clay','--sky'].map(tok);
+  const col=x=>pal[ss.indexOf(x)%pal.length];
+  const ds=(fn)=>asc.map(x=>({label:'موسم '+x,data:names.map(c=>{const s=get(x,c);return s?fn(s):null;}),backgroundColor:col(x),borderRadius:3}));
+  draw('cCmpNet',{type:'bar',data:{labels:names,datasets:ds(s=>s.net)},options:baseOpts({indexAxis:'y',scales:{x:{...baseOpts().scales.x,ticks:{...baseOpts().scales.x.ticks,callback:v=>fmtM(v)}},y:{...baseOpts().scales.y,position:'right'}},
+    plugins:{...baseOpts().plugins,tooltip:{...baseOpts().plugins.tooltip,callbacks:{label:c=>` ${c.dataset.label}: ${c.raw==null?'ماتزرعش':fmt(c.raw)+' ج.م'}`}}}})});
+  draw('cCmpKg',{type:'bar',data:{labels:names,datasets:ds(s=>+s.netKg.toFixed(2))},options:baseOpts({scales:{x:baseOpts().scales.x,y:{...baseOpts().scales.y,position:'right'}}})});
+  draw('cCmpWt',{type:'bar',data:{labels:names,datasets:ds(s=>+(s.farm/1000).toFixed(2))},options:baseOpts({scales:{x:baseOpts().scales.x,y:{...baseOpts().scales.y,position:'right'}}})});
+  $('#tCmpCrops').innerHTML=`<thead><tr><th>المحصول</th>${ss.map(x=>`<th class="n">صافي ${x}</th>`).join('')}<th class="n">تغيير الصافي</th>${ss.map(x=>`<th class="n">الكيلو ${x}</th>`).join('')}<th class="n">تغيير الكيلو</th></tr></thead><tbody>`+
+    names.map(c=>{const a=get(nw,c),b=get(pv,c);return `<tr><td><b>${c}</b></td>${ss.map(x=>{const s=get(x,c);return `<td class="n">${s?fmt(s.net):'—'}</td>`}).join('')}${chgCell(a&&b?pct(a.net,b.net):null)}${ss.map(x=>{const s=get(x,c);return `<td class="n">${s?fmt(s.netKg,2):'—'}</td>`}).join('')}${chgCell(a&&b?pct(a.netKg,b.netKg):null)}</tr>`}).join('')+'</tbody>';
 }
 function renderAll(){
+  files.forEach(f=>{ if(!f.season) f.season=detectSeason(f.name,f.crops); });
+  renderSeasonBar();
   renderFiles(); renderSales(); renderCrop(); renderTraders(); renderExplore(true);
+  if(mode==='compare') renderCompare();
   $('#lastUpd').textContent=new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
   const od=files.some(f=>f.source==='onedrive'), lk=files.some(f=>f.source==='link');
-  $('#livePill').className='pill '+(od||lk?'live':'idle'); $('#liveTxt').textContent=lk?'متصل بـ Google Sheets — تحديث تلقائي':od?'متصل بوان درايف — تحديث تلقائي':(files.some(f=>f.source==='local')?'ملفات من الجهاز':(SAMPLE.length?'بيانات تجريبية من ملف المبيعات':'مش متصل'));
+  $('#livePill').className='pill '+(od||lk?'live':'idle'); $('#liveTxt').textContent=lk?'متصل بـ Google Sheets — تحديث تلقائي':od?'متصل بوان درايف — تحديث تلقائي':(files.some(f=>f.source==='local')?'ملفات من الجهاز':(SAMPLE.length?'بيانات تجريبية من ملفات المبيعات':'مش متصل'));
 }
 
 /* ---------- tabs ---------- */
@@ -616,7 +712,7 @@ $('#refreshBtn').addEventListener('click',()=>refreshOd(true));
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshOd(false); });
 
 /* ---------- boot ---------- */
-function loadSample(){ if(!SAMPLE.length){ files=[]; return; } files=[{key:'sample',name:'مبيعات المحاصيل 2026',source:'sample',wb:null,crops:SAMPLE,modified:null}]; }
+function loadSample(){ files=SAMPLE.map((x,i)=>({key:'sample'+i,name:x.name,source:'sample',wb:null,crops:x.crops,modified:null})); }
 async function boot(){
   loadSample(); renderAll();
   try{ const links=JSON.parse(store.get('farm.links')||'[]'); for(const l of links){ try{ await loadLinkFile(l.url,l.name); }catch(e){ console.warn(e); } } if(links.length){ renderAll(); startPolling(); } }catch(e){}
