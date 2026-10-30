@@ -555,7 +555,11 @@ function renderAll(){
   renderFiles(); renderSales(); renderCrop(); renderTraders(); renderExplore(true);
   if(mode==='compare') renderCompare();
   $('#lastUpd').textContent=new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'});
+  renderPill();
+}
+function renderPill(){
   const od=files.some(f=>f.source==='onedrive'), lk=files.some(f=>f.source==='link');
+  if(syncing){ $('#livePill').className='pill live'; $('#liveTxt').textContent='بيحدّث من Google Sheets…'; return; }
   $('#livePill').className='pill '+(od||lk?'live':'idle'); $('#liveTxt').textContent=lk?'متصل بـ Google Sheets — تحديث تلقائي':od?'متصل بوان درايف — تحديث تلقائي':(files.some(f=>f.source==='local')?'ملفات من الجهاز':(SAMPLE.length?'بيانات تجريبية من ملفات المبيعات':'مش متصل'));
 }
 
@@ -570,7 +574,7 @@ $('#minKg').addEventListener('change',renderTraders);
 $('#exFile').addEventListener('change',()=>renderExplore(false));
 $('#exSheet').addEventListener('change',()=>renderExplore(false));
 ['#exLabel','#exValue','#exType'].forEach(s=>$(s).addEventListener('change',drawExplore));
-$('#fileList').addEventListener('click',e=>{const k=e.target.dataset.rm; if(!k) return; files=files.filter(f=>f.key!==k); saveOdSelection(); saveLinks(); if(!files.length) loadSample(); renderAll();});
+$('#fileList').addEventListener('click',e=>{const k=e.target.dataset.rm; if(!k) return; const gone=files.find(f=>f.key===k); if(gone&&gone.url){ try{ localStorage.removeItem('farm.cache.'+gone.url); }catch(e){} } files=files.filter(f=>f.key!==k); saveOdSelection(); saveLinks(); if(!files.length) loadSample(); renderAll();});
 
 /* ---------- local files ---------- */
 $('#localFiles').addEventListener('change',async e=>{
@@ -600,18 +604,31 @@ function readFromScriptJson(j){
   const crops=[]; wb.SheetNames.forEach(n=>{ const p=parseSalesSheet(wb.Sheets[n]); if(p) crops.push(p); });
   return {wb,crops};
 }
+function applyScriptText(url,name,txt){
+  let j; try{ j=JSON.parse(txt); }catch(e){ throw new Error('الرد مش داتا. اتأكد إن النشر "Anyone"'); }
+  const h=hashBytes(new TextEncoder().encode(txt)); const key='link:'+url; const old=files.find(f=>f.key===key);
+  if(old && old.modified===h) return false;
+  const {wb,crops}=readFromScriptJson(j);
+  files=files.filter(f=>f.key!==key && f.source!=='sample');
+  files.push({key,url,name:name||j.name||'ملف Google Sheets',source:'link',wb,crops,modified:h});
+  return true;
+}
+let syncing=false;
+async function loadAllLinks(list){
+  syncing=true; renderPill();
+  const res=await Promise.allSettled(list.map(l=>loadLinkFile(l.url,l.name)));
+  syncing=false; renderPill();
+  return res;
+}
 async function loadLinkFile(url,name){
   const isScript=/^https:\/\/script\.google\.com\/macros\//.test(url);
   const r=await fetch(url+(url.includes('?')?'&':'?')+'t='+Date.now(),{cache:'no-store'});
   if(isScript){
     if(!r.ok) throw new Error('الرابط رجّع خطأ '+r.status);
-    const txt=await r.text(); let j; try{ j=JSON.parse(txt); }catch(e){ throw new Error('الرد مش داتا. اتأكد إن النشر "Anyone"'); }
-    const h=hashBytes(new TextEncoder().encode(txt)); const key='link:'+url; const old=files.find(f=>f.key===key);
-    if(old && old.modified===h) return false;
-    const {wb,crops}=readFromScriptJson(j);
-    files=files.filter(f=>f.key!==key && f.source!=='sample');
-    files.push({key,url,name:name||j.name||'ملف Google Sheets',source:'link',wb,crops,modified:h});
-    return true;
+    const txt=await r.text();
+    const changed=applyScriptText(url,name,txt);
+    store.set('farm.cache.'+url,txt); // keep last copy so the app opens instantly next time
+    return changed;
   }
   if(!r.ok) throw new Error('الرابط رجّع خطأ '+r.status);
   const bytes=new Uint8Array(await r.arrayBuffer());
@@ -699,7 +716,10 @@ $('#odBtn').addEventListener('click',async()=>{
 });
 async function refreshOd(manual){
   const lks=files.filter(f=>f.source==='link');
-  if(lks.length){ let ch=false; try{ for(const f of lks){ if(await loadLinkFile(f.url,f.name)) ch=true; } }catch(e){ if(manual) toast('مقدرتش أوصل للملف: '+e.message); }
+  if(lks.length){
+    const res=await loadAllLinks(lks.map(f=>({url:f.url,name:f.name})));
+    const ch=res.some(x=>x.status==='fulfilled'&&x.value), bad=res.find(x=>x.status==='rejected');
+    if(bad&&manual) toast('مقدرتش أوصل لملف: '+bad.reason.message);
     if(ch||manual) renderAll(); if(ch) toast('اتحدّثت البيانات من Google Sheets'); }
   const ods=files.filter(f=>f.source==='onedrive'); if(!ods.length){ if(lks.length) return; if(manual) toast(files.some(f=>f.source==='local')?'ملفات الجهاز: ارفعها تاني بعد التعديل':'البيانات التجريبية ثابتة'); return; }
   try{ let changed=false; for(const f of ods){ if(await loadOdFile(f.id,f.name)) changed=true; }
@@ -715,7 +735,19 @@ document.addEventListener('visibilitychange',()=>{ if(!document.hidden) refreshO
 function loadSample(){ files=SAMPLE.map((x,i)=>({key:'sample'+i,name:x.name,source:'sample',wb:null,crops:x.crops,modified:null})); }
 async function boot(){
   loadSample(); renderAll();
-  try{ const links=JSON.parse(store.get('farm.links')||'[]'); for(const l of links){ try{ await loadLinkFile(l.url,l.name); }catch(e){ console.warn(e); } } if(links.length){ renderAll(); startPolling(); } }catch(e){}
+  try{
+    const links=JSON.parse(store.get('farm.links')||'[]');
+    if(links.length){
+      // 1) show the last saved copy right away
+      links.forEach(l=>{ const c=store.get('farm.cache.'+l.url); if(c){ try{ applyScriptText(l.url,l.name,c); }catch(e){} } });
+      renderAll();
+      // 2) fetch fresh data for all seasons at the same time
+      const res=await loadAllLinks(links);
+      if(res.some(x=>x.status==='fulfilled'&&x.value)) renderAll();
+      res.filter(x=>x.status==='rejected').forEach(x=>console.warn(x.reason));
+      startPolling();
+    }
+  }catch(e){ console.warn(e); }
   if(cloudHost && store.get('farm.clientId')){
     try{
       await getMsal();
